@@ -1,6 +1,6 @@
 import os
 from Crypto.Protocol.KDF import scrypt
-KEY_LENGTH = 16
+from loguru import logger
 N = 2**16 ##meant for ram
 R = 10
 P = 10
@@ -34,10 +34,10 @@ def check_bcrypt(password: str, hashed_password: str):
 
 
 
-def generate_scrypt_key(password, salt=None):
+def generate_scrypt_key(password, salt, key_length):
     ##return bytes of keys, returns list in case of keys > 1
     ##returns hex encoded salt and key byte array
-    if not salt:
-        salt = os.urandom(16)
-    keys = scrypt(password,  salt, KEY_LENGTH, N, R, P, 1)
+    logger.debug(f"Generating scrypt key with {password} and salt {salt}, with keylength {N}, R {R} and p {P}")
+
+    keys = scrypt(password,  salt, key_length, N, R, P, 1)
     return keys, salt
