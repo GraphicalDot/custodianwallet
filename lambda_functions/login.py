@@ -11,6 +11,10 @@ import json
 CLIENT_ID = ''
 CLIENT_SECRET = ''
 USER_POOL_ID = ''
+DYNAMODB_URL = ""
+DYNAMODB_REGION = ""
+TABLE_NAME = ""
+
 
 def get_secret_hash(username):
     msg = username + CLIENT_ID
@@ -47,27 +51,45 @@ def lambda_handler(event, context):
                 'username': event["username"],
                 'password': event["password"], 
             })
-        user_dict = {}
-        user = client.admin_get_user(
-             UserPoolId=USER_POOL_ID,
-            Username=event["username"])
-        [user_dict.update({e['Name']: e['Value']}) for e in user['UserAttributes']]
-        user_dict.update({"created_at": user["UserCreateDate"]})
-        print (user_dict)
+
     except client.exceptions.NotAuthorizedException:
         return {"error": True, "success": False, 'message': "The username or password is incorrect", "data": None}
 
     except client.exceptions.UserNotConfirmedException:
         return {"error": True, "success": False, 'message': "User is not confirmed", "data": None}
 
+
+    user = get_user(event['username'])
+    if not user:
+        return {"error": True, "success": False, "message": "Error in finding user", "data": None}
+    
+    
     
     if resp.get("AuthenticationResult"):
-        return {'message': "success", "error": False, "success": True, "data": {"name": user_dict["name"], 
-            "email": user_dict["email"], "created_at": user_dict["created_at"].strftime("%d-%m-%Y"), "username": event["username"],
-            "id_token": resp["AuthenticationResult"]["IdToken"], "refresh_token": resp["AuthenticationResult"]["RefreshToken"],
-            "access_token": resp["AuthenticationResult"]["AccessToken"], "expires_in": resp["AuthenticationResult"]["ExpiresIn"],
-            "token_type": resp["AuthenticationResult"]["TokenType"]
-        }}
-    else:
-        
-        return {"error": False, "success": True, "data": {"challenge_name": resp["ChallengeName"], "session_token": resp["Session"], "challenge_parameters": resp["ChallengeParameters"] }}
+        user.update({"id_token": resp["AuthenticationResult"]["IdToken"], 
+                    "refresh_token": resp["AuthenticationResult"]["RefreshToken"],
+                    "access_token": resp["AuthenticationResult"]["AccessToken"], 
+                    "expires_in": resp["AuthenticationResult"]["ExpiresIn"],
+                    "token_type": resp["AuthenticationResult"]["TokenType"]})
+
+        return {'message': "success", "error": False, "success": True, "data": user}
+
+    ##this response will be returned when MFA is enabled
+    return {"error": False, "success": True, "data": {"challenge_name": resp["ChallengeName"], "session_token": resp["Session"], "challenge_parameters": resp["ChallengeParameters"] }}
+
+
+def get_user(username):
+
+    
+    dynamodb = boto3.resource('dynamodb', region_name=DYNAMODB_REGION, endpoint_url=DYNAMODB_URL)
+    table = dynamodb.Table(TABLE_NAME)
+    response = table.get_item(
+        Key={
+            'username': username,
+        },
+        AttributesToGet=["kdf", "iterations", "email", "name"]
+    )
+    if response.get("Item"):
+        return response["Item"]
+    
+    return 
